@@ -1,0 +1,86 @@
+{% extends 'lab04/base.html' %}
+{% block title %}Dashboard — Lab 04{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="crypto-flow">
+    <span style="font-weight:800; color:var(--accent); margin-right:6px;">🔐 LUỒNG MÃ HÓA LAB 04:</span>
+    <div class="step active"><i class="fa fa-laptop"></i> Client tạo RSA KeyPair</div>
+    <span class="arrow">→</span>
+    <div class="step active"><i class="fa fa-lock"></i> Mã hóa tại Browser</div>
+    <span class="arrow">→</span>
+    <div class="step"><i class="fa fa-server"></i> Server lưu Ciphertext</div>
+    <span class="arrow">→</span>
+    <div class="step"><i class="fa fa-database"></i> DB lưu VARBINARY</div>
+    <span class="arrow">→</span>
+    <div class="step active"><i class="fa fa-key"></i> Client giải mã bằng Private Key</div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon" style="background:#0f172a"><i class="fa fa-id-badge"></i></div>
+        <div class="stat-label">Nhân viên</div>
+        <div class="stat-value">{{ session.manv }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:linear-gradient(135deg,#06b6d4,#8b5cf6)"><i class="fa fa-key"></i></div>
+        <div class="stat-label">Thuật toán</div>
+        <div class="stat-value" style="font-size:1rem">RSA-OAEP 2048</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:#10b981"><i class="fa fa-laptop-code"></i></div>
+        <div class="stat-label">Nơi mã hóa</div>
+        <div class="stat-value" style="font-size:1rem">CLIENT</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:#f59e0b"><i class="fa fa-shield-alt"></i></div>
+        <div class="stat-label">Hash Password</div>
+        <div class="stat-value" style="font-size:1rem">SHA-256</div>
+    </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+    <div class="card">
+        <div class="card-header"><h3>📋 Chức năng</h3></div>
+        <div class="card-body" style="display:flex; flex-direction:column; gap:10px;">
+            <a href="/lop" class="btn btn-primary"><i class="fa fa-chalkboard"></i> Quản lý Lớp học</a>
+            <a href="/sinhvien" class="btn" style="background:#8b5cf6;color:#fff"><i class="fa fa-user-graduate"></i> Quản lý Sinh viên</a>
+            <a href="/bangdiem" class="btn btn-success"><i class="fa fa-table"></i> Nhập & Xem Bảng điểm</a>
+            <a href="/nhanvien" class="btn btn-outline"><i class="fa fa-id-badge"></i> Thông tin & Lương</a>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3>🔑 Private Key Status</h3></div>
+        <div class="card-body">
+            <div id="keyStatus" style="font-size:.84rem; color:#475569; line-height:1.7">
+                <i class="fa fa-spinner fa-spin"></i> Đang kiểm tra...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(async function() {
+    const privKey = ClientCrypto.loadPrivateKey();
+    const box = document.getElementById('keyStatus');
+    if (privKey) {
+        box.innerHTML = `
+            <div style="color:#059669; font-weight:700; margin-bottom:8px">
+                <i class="fa fa-check-circle"></i> Private Key đã có trong Session
+            </div>
+            <p>🔐 Private Key lưu trong <code>sessionStorage</code> của browser</p>
+            <p>🚫 Server <strong>không bao giờ nhận</strong> Private Key</p>
+            <p>⏱ Key sẽ bị xóa khi đóng tab/trình duyệt</p>
+            <p style="margin-top:8px; font-size:.72rem; color:#94a3b8">
+                Key prefix: ${privKey.substring(0,20)}...
+            </p>`;
+    } else {
+        box.innerHTML = `
+            <div style="color:#f59e0b; font-weight:700; margin-bottom:8px">
+                <i class="fa fa-exclamation-triangle"></i> Chưa có Private Key
+            </div>
+            <p>Vui lòng đăng xuất và đăng nhập lại để tạo cặp khóa RSA.</p>`;
+    }
+})();
+</script>
+{% endblock %}

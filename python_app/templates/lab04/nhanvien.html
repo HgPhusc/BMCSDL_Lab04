@@ -1,0 +1,232 @@
+{% extends 'lab04/base.html' %}
+{% block title %}Thông tin nhân viên — Lab 04{% endblock %}
+{% block page_title %}Thông tin cá nhân & Lương{% endblock %}
+{% block content %}
+
+<div class="crypto-flow">
+    <span style="font-weight:800;color:var(--accent);margin-right:6px">🔐 GIẢI MÃ LƯƠNG:</span>
+    <div class="step">Server trả LUONG (ciphertext)</div>
+    <span class="arrow">→</span>
+    <div class="step active">Import Private Key (sessionStorage)</div>
+    <span class="arrow">→</span>
+    <div class="step active">RSA Decrypt (Browser)</div>
+    <span class="arrow">→</span>
+    <div class="step active">Hiển thị lương plaintext</div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+    <div class="card">
+        <div class="card-header"><h3>👤 Thông tin nhân viên</h3></div>
+        <div class="card-body" id="nvInfo">
+            <div style="color:#94a3b8; text-align:center; padding:20px">
+                <i class="fa fa-spinner fa-spin"></i> Đang tải...
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>💰 Lương (Client Decrypt)</h3>
+            <span class="tag tag-purple">Giải mã tại Browser</span>
+        </div>
+        <div class="card-body" style="text-align:center; padding:30px">
+            <div id="luongDisplay">
+                <div style="color:#94a3b8"><i class="fa fa-spinner fa-spin"></i> Đang giải mã...</div>
+            </div>
+            <div id="decryptLog" style="display:none; background:#0f172a; border-radius:8px; padding:10px; font-family:monospace; font-size:.72rem; color:#94a3b8; margin-top:14px; text-align:left;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- THÊM NHÂN VIÊN MỚI -->
+<div class="card" style="margin-top:18px">
+    <div class="card-header">
+        <h3>➕ Thêm nhân viên mới (Client Encrypt)</h3>
+        <span class="tag tag-cyan">Mã hóa tại Browser</span>
+    </div>
+    <div class="card-body">
+        <div style="background:#fefce8; border:1px solid #fde047; border-radius:8px; padding:10px 14px; font-size:.78rem; color:#854d0e; margin-bottom:16px;">
+            <i class="fa fa-info-circle"></i>
+            <strong>Lab 04:</strong> Lương và mật khẩu được mã hóa ngay tại browser.
+            Server chỉ nhận dữ liệu đã mã hóa — <strong>không bao giờ thấy plaintext</strong>.
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>MÃ NV *</label><input type="text" id="n-manv" placeholder="NV04"></div>
+            <div class="form-group"><label>HỌ TÊN *</label><input type="text" id="n-hoten" placeholder="Nguyễn Văn D"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>EMAIL</label><input type="email" id="n-email" placeholder="nvd@gmail.com"></div>
+            <div class="form-group"><label>LƯƠNG (số tiền) *</label><input type="number" id="n-luong" placeholder="4000000"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>TÊN ĐĂNG NHẬP *</label><input type="text" id="n-tendn" placeholder="NVD"></div>
+            <div class="form-group"><label>MẬT KHẨU *</label><input type="password" id="n-mk" placeholder="password123"></div>
+        </div>
+
+        <div id="addLog" style="display:none; background:#0f172a; border-radius:8px; padding:12px; font-family:monospace; font-size:.72rem; color:#94a3b8; margin-bottom:12px; max-height:120px; overflow-y:auto;"></div>
+
+        <button class="btn btn-accent" onclick="themNhanVien()">
+            <i class="fa fa-user-plus"></i> Mã hóa & Thêm nhân viên
+        </button>
+    </div>
+</div>
+
+<script>
+function decLog(msg, ok=false) {
+    const box = document.getElementById('decryptLog');
+    box.style.display = 'block';
+    box.innerHTML += `<div style="color:${ok?'#34d399':'#94a3b8'}">▶ ${msg}</div>`;
+}
+
+function addLog(msg, ok=false) {
+    const box = document.getElementById('addLog');
+    box.style.display = 'block';
+    box.innerHTML += `<div style="color:${ok?'#34d399':'#94a3b8'}">▶ ${msg}</div>`;
+    box.scrollTop = box.scrollHeight;
+}
+
+(async function loadNhanVien() {
+    try {
+        const res  = await fetch('/nhanvien/info');
+        const data = await res.json();
+
+        if (!data.success || !data.data) {
+            document.getElementById('nvInfo').innerHTML = '<p style="color:#ef4444">Không tải được dữ liệu.</p>';
+            return;
+        }
+
+        const nv = data.data;
+
+        // Hiển thị thông tin
+        document.getElementById('nvInfo').innerHTML = `
+            <table style="width:100%; font-size:.87rem;">
+                <tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:9px 0; color:#94a3b8; width:40%">Mã NV</td>
+                    <td><strong>${nv.MANV}</strong></td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:9px 0; color:#94a3b8">Họ tên</td>
+                    <td><strong>${nv.HOTEN}</strong></td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:9px 0; color:#94a3b8">Email</td>
+                    <td>${nv.EMAIL || '—'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:9px 0; color:#94a3b8">Tên đăng nhập</td>
+                    <td>${nv.TENDN}</td>
+                </tr>
+            </table>`;
+
+        // Giải mã lương tại CLIENT
+        decLog('Nhận dữ liệu lương (ciphertext Base64) từ server...');
+        const luongEnc = nv.LUONG;
+
+        if (!luongEnc) {
+            document.getElementById('luongDisplay').innerHTML = '<p style="color:#94a3b8">Không có dữ liệu lương.</p>';
+            return;
+        }
+
+        decLog(`Ciphertext: ${luongEnc.substring(0,30)}...`);
+
+        const privKeyB64 = ClientCrypto.loadPrivateKey();
+        if (!privKeyB64) {
+            decLog('❌ Không có Private Key trong sessionStorage!');
+            document.getElementById('luongDisplay').innerHTML = `
+                <p style="color:#f59e0b">⚠ Private Key không có trong session.<br>Đăng xuất và đăng nhập lại.</p>`;
+            return;
+        }
+
+        decLog('Import Private Key từ sessionStorage...');
+        const privKey = await ClientCrypto.importPrivateKey(privKeyB64);
+        decLog('Giải mã RSA-OAEP tại browser...');
+        const luongPlain = await ClientCrypto.decrypt(privKey, luongEnc);
+
+        if (luongPlain) {
+            decLog(`✔ Giải mã thành công: ${luongPlain}`, true);
+            document.getElementById('luongDisplay').innerHTML = `
+                <div style="font-size:.72rem; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px">Lương cơ bản</div>
+                <div style="font-size:2.2rem; font-weight:900; color:#0f172a">
+                    ${parseInt(luongPlain).toLocaleString('vi-VN')}
+                </div>
+                <div style="font-size:.85rem; color:#94a3b8; margin-top:4px">VNĐ</div>
+                <div style="margin-top:14px; padding:10px; background:#f0fdf4; border-radius:8px; font-size:.75rem; color:#065f46">
+                    ✔ Giải mã thành công bằng <strong>Private Key</strong> tại browser
+                </div>`;
+        } else {
+            decLog('❌ Giải mã thất bại — sai Private Key');
+            document.getElementById('luongDisplay').innerHTML = `
+                <div style="color:#ef4444; font-size:.9rem">
+                    ❌ Không giải mã được.<br>
+                    <span style="font-size:.78rem; color:#94a3b8">Lương có thể được mã hóa bởi phiên đăng nhập khác.</span>
+                </div>`;
+        }
+
+    } catch(e) {
+        document.getElementById('nvInfo').innerHTML = `<p style="color:#ef4444">Lỗi: ${e.message}</p>`;
+    }
+})();
+
+
+async function themNhanVien() {
+    const manv   = document.getElementById('n-manv').value.trim().toUpperCase();
+    const hoten  = document.getElementById('n-hoten').value.trim();
+    const email  = document.getElementById('n-email').value.trim();
+    const luong  = document.getElementById('n-luong').value.trim();
+    const tendn  = document.getElementById('n-tendn').value.trim();
+    const mk     = document.getElementById('n-mk').value.trim();
+
+    document.getElementById('addLog').innerHTML = '';
+
+    if (!manv || !hoten || !luong || !tendn || !mk) {
+        alert('Vui lòng nhập đầy đủ thông tin bắt buộc!');
+        return;
+    }
+
+    try {
+        // BƯỚC 1: Tạo cặp khóa RSA cho NV mới tại CLIENT
+        addLog('Tạo cặp khóa RSA-OAEP 2048-bit cho nhân viên mới...');
+        const keyPair = await ClientCrypto.generateKeyPair();
+        const pubKeyB64  = await ClientCrypto.exportPublicKey(keyPair.publicKey);
+        const privKeyB64 = await ClientCrypto.exportPrivateKey(keyPair.privateKey);
+        addLog(`Public Key: ${pubKeyB64.substring(0,30)}...`, true);
+        addLog('Private Key tạo xong (chỉ lưu cục bộ, KHÔNG gửi server).', true);
+
+        // BƯỚC 2: Mã hóa lương bằng Public Key tại CLIENT
+        addLog(`Mã hóa lương "${parseInt(luong).toLocaleString()}" bằng RSA-OAEP...`);
+        const luongEnc = await ClientCrypto.encrypt(keyPair.publicKey, luong);
+        addLog(`Ciphertext: ${luongEnc.substring(0,30)}...`, true);
+
+        // BƯỚC 3: Hash mật khẩu tại CLIENT
+        addLog('Hash mật khẩu bằng SHA-256 tại browser...');
+        const mkHash = await ClientCrypto.hashPassword(mk);
+        addLog(`SHA-256: ${mkHash.substring(0,20)}...`, true);
+
+        // BƯỚC 4: Gửi lên server (ciphertext + hash, KHÔNG có plaintext)
+        addLog('Gửi dữ liệu đã mã hóa lên server...');
+        const res = await fetch('/nhanvien/them', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                manv, hoten, email,
+                luong_enc: luongEnc,    // Đã mã hóa RSA
+                tendn,
+                mk_hash: mkHash,        // Đã hash SHA-256
+                pubkey: pubKeyB64       // Public Key để server lưu
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            addLog('✔ Thêm nhân viên thành công!', true);
+            addLog(`⚠ Lưu ý: Private Key của ${manv} phải được lưu an toàn.`, true);
+            alert(`✔ Thêm nhân viên ${hoten} thành công!\n\nLưu ý: Private Key của NV mới chưa được lưu vào hệ thống. Cần cơ chế quản lý key riêng.`);
+        } else {
+            addLog('❌ Lỗi: ' + data.error);
+        }
+    } catch(e) {
+        addLog('❌ Lỗi: ' + e.message);
+    }
+}
+</script>
+{% endblock %}
