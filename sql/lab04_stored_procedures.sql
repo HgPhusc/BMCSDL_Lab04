@@ -23,6 +23,28 @@ END
 GO
 
 -- ============================================================
+-- BƯỚC 2: Thêm cột ROLE nếu chưa có
+-- ============================================================
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns 
+    WHERE object_id = OBJECT_ID('NHANVIEN') AND name = 'ROLE'
+)
+BEGIN
+    ALTER TABLE NHANVIEN ADD ROLE VARCHAR(20) DEFAULT 'NHANVIEN';
+    PRINT N'✔ Thêm cột ROLE';
+END
+GO
+
+-- ============================================================
+-- BƯỚC 4: Cập nhật ROLE cho NV hiện tại
+-- ============================================================
+UPDATE NHANVIEN SET ROLE = 'ADMIN'    WHERE MANV = 'NV01';
+UPDATE NHANVIEN SET ROLE = 'NHANVIEN' WHERE MANV = 'NV02';
+UPDATE NHANVIEN SET ROLE = 'NHANVIEN' WHERE MANV = 'NV03';
+PRINT N'✔ Cập nhật ROLE';
+GO
+
+-- ============================================================
 -- SP_INS_PUBLIC_ENCRYPT_NHANVIEN
 -- Client đã mã hóa LUONG và MATKHAU trước khi gửi lên
 -- SP chỉ lưu trực tiếp, KHÔNG mã hóa thêm
@@ -61,9 +83,9 @@ BEGIN
         @MANV,
         @HOTEN,
         @EMAIL,
-        CAST(@LUONG AS VARBINARY(MAX)),     -- LUONG đã mã hóa RSA (Base64 → store as text in VARBINARY)
+        CAST(@LUONG AS VARBINARY(MAX)),     -- LUONG đã mã hóa RSA (Base64 text stored as VARBINARY)
         @TENDN,
-        CAST(@MK AS VARBINARY(MAX)),         -- MATKHAU đã hash SHA1 từ client
+        CONVERT(VARBINARY(MAX), @MK, 2),    -- MATKHAU lưu SHA1 binary từ hex string
         @MANV,                               -- PUBKEY = MANV (tên định danh)
         @PUB                                 -- Nội dung Public Key đầy đủ
     );
@@ -88,11 +110,11 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Xác thực: so sánh hash từ client với hash đã lưu
+    -- Xác thực: so sánh hash SHA1 từ client với hash đã lưu
     IF NOT EXISTS (
         SELECT 1 FROM NHANVIEN
         WHERE TENDN = @TENDN
-          AND CAST(MATKHAU AS NVARCHAR(MAX)) = @MK
+          AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2)
     )
     BEGIN
         RAISERROR(N'Tên đăng nhập hoặc mật khẩu không đúng!', 16, 1);
@@ -104,13 +126,13 @@ BEGIN
         MANV,
         HOTEN,
         EMAIL,
-        CAST(LUONG AS NVARCHAR(MAX)) AS LUONG,   -- Base64 encrypted, client giải mã
+        CONVERT(VARCHAR(MAX), LUONG) AS LUONG,   -- Base64 encrypted text
         TENDN,
         PUBKEY,
         PUBKEY_CLIENT
     FROM NHANVIEN
     WHERE TENDN = @TENDN
-      AND CAST(MATKHAU AS NVARCHAR(MAX)) = @MK;
+      AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2);
 END
 GO
 
@@ -131,10 +153,10 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT MANV, HOTEN, EMAIL, TENDN, PUBKEY, PUBKEY_CLIENT,
-           CAST(LUONG AS NVARCHAR(MAX)) AS LUONG_ENCRYPTED
+           CONVERT(VARCHAR(MAX), LUONG) AS LUONG_ENCRYPTED
     FROM NHANVIEN
     WHERE MANV = @MANV
-      AND CAST(MATKHAU AS NVARCHAR(MAX)) = @MK;
+      AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2);
 END
 GO
 
@@ -196,12 +218,11 @@ GO
 PRINT N'✔ Lab04 Stored Procedures tạo thành công!';
 GO
 
-USE QLSVNhom;
-
 -- Chuyển đổi đúng từ hex string sang binary
 UPDATE NHANVIEN 
-SET MATKHAU = CONVERT(VARBINARY(MAX), 'd3bf0bc270c59f340b441dbc51f92cfcd9e9e21ad846fb605e49b93d1512e763', 2)
+SET MATKHAU = CONVERT(VARBINARY(MAX), 'c35a37f0bca08afa583247cc461cad9c8082a47c', 2)
 WHERE MANV = 'NV01';
+GO
 
 -- Xem dạng HEX thực sự đang lưu
 SELECT MANV, CONVERT(VARCHAR(MAX), MATKHAU, 2) AS MK_HEX
@@ -219,7 +240,7 @@ BEGIN
     SET NOCOUNT ON;
 
     SELECT MANV, HOTEN, EMAIL, TENDN, PUBKEY, PUBKEY_CLIENT,
-           CONVERT(VARCHAR(MAX), LUONG, 2) AS LUONG_ENCRYPTED
+           CONVERT(VARCHAR(MAX), LUONG) AS LUONG_ENCRYPTED
     FROM NHANVIEN
     WHERE MANV = @MANV
       AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2);
@@ -244,7 +265,7 @@ BEGIN
     END
 
     SELECT MANV, HOTEN, EMAIL,
-           CONVERT(VARCHAR(MAX), LUONG, 2) AS LUONG,
+           CONVERT(VARCHAR(MAX), LUONG) AS LUONG,
            TENDN, PUBKEY, PUBKEY_CLIENT
     FROM NHANVIEN
     WHERE TENDN = @TENDN
@@ -263,7 +284,7 @@ BEGIN
         sv.HOTEN        AS HOTEN_SV,
         bd.MAHP,
         hp.TENHP,
-        CONVERT(VARCHAR(MAX), bd.DIEMTHI, 2) AS DIEMTHI_ENCRYPTED
+        CONVERT(VARCHAR(MAX), bd.DIEMTHI) AS DIEMTHI_ENCRYPTED
     FROM BANGDIEM bd
     JOIN SINHVIEN sv ON bd.MASV = sv.MASV
     JOIN HOCPHAN  hp ON bd.MAHP = hp.MAHP
@@ -274,4 +295,13 @@ GO
 -- Xóa điểm cũ
 DELETE FROM BANGDIEM;
 
-EXEC SP_LOGIN_CLIENT 'NV01', 'd3bf0bc270c59f340b441dbc51f92cfcd9e9e21ad846fb605e49b93d1512e763';
+EXEC SP_LOGIN_CLIENT 'NV01', 'c35a37f0bca08afa583247cc461cad9c8082a47c';
+
+PRINT N'=== Danh sách nhân viên ===';
+SELECT 
+    MANV, HOTEN, TENDN, ROLE,
+    CONVERT(VARCHAR(MAX), MATKHAU, 2) AS MATKHAU_SHA256,
+    CASE WHEN PUBKEY_CLIENT IS NOT NULL THEN N'Có' ELSE N'Chưa có' END AS PUBKEY_STATUS
+FROM NHANVIEN;
+GO
+

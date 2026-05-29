@@ -88,12 +88,12 @@
     const ClientCrypto = {
         async hashPassword(password) {
             const data = new TextEncoder().encode(password);
-            const hash = await crypto.subtle.digest('SHA-256', data);
+            const hash = await crypto.subtle.digest('SHA-1', data);
             return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
         },
         async generateKeyPair() {
             return await crypto.subtle.generateKey(
-                { name:'RSA-OAEP', modulusLength:2048, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-256' },
+                { name:'RSA-OAEP', modulusLength:2048, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-1' },
                 true, ['encrypt','decrypt']
             );
         },
@@ -105,8 +105,37 @@
             const exp = await crypto.subtle.exportKey('pkcs8', key);
             return btoa(String.fromCharCode(...new Uint8Array(exp)));
         },
-        savePrivateKey(b64) { sessionStorage.setItem('privateKey', b64); },
-        loadPrivateKey() { return sessionStorage.getItem('privateKey'); }
+        savePrivateKey(b64) {
+            localStorage.setItem('lab04_privateKey', b64);
+            localStorage.setItem('lab04_keyVersion', '1.0_SHA1');
+        },
+        savePublicKey(b64) {
+            localStorage.setItem('lab04_publicKey', b64);
+        },
+        loadPrivateKey() {
+            if (!ClientCrypto.validateKeyVersion()) {
+                ClientCrypto.clearKeys();
+                return null;
+            }
+            return localStorage.getItem('lab04_privateKey');
+        },
+        loadPublicKey() {
+            return localStorage.getItem('lab04_publicKey');
+        },
+        clearKeys() {
+            localStorage.removeItem('lab04_privateKey');
+            localStorage.removeItem('lab04_publicKey');
+            localStorage.removeItem('lab04_keyVersion');
+        },
+        validateKeyVersion() {
+            const currentVersion = '1.0_SHA1';
+            const savedVersion = localStorage.getItem('lab04_keyVersion');
+            if (!savedVersion || savedVersion !== currentVersion) {
+                console.warn('⚠️ Phát hiện cập nhật cấu hình key. Xóa key cũ...');
+                return false;
+            }
+            return true;
+        }
     };
     </script>
 </head>
@@ -124,7 +153,7 @@
                 <div class="flow-steps">
                     <div class="flow-step">Nhập MK</div>
                     <div class="flow-arrow">→</div>
-                    <div class="flow-step highlight">SHA-256 (Client)</div>
+                    <div class="flow-step highlight">SHA-1 (Client)</div>
                     <div class="flow-arrow">→</div>
                     <div class="flow-step">Gửi Hash lên Server</div>
                     <div class="flow-arrow">→</div>
@@ -160,7 +189,7 @@
             <div class="status-log" id="statusLog"></div>
 
             <div class="hint">
-                💡 <strong>Lưu ý Lab 04:</strong> Mật khẩu được hash SHA-256 ngay tại browser trước khi gửi lên server. Server <strong>không bao giờ nhận mật khẩu gốc</strong>.
+                💡 <strong>Lưu ý Lab 04:</strong> Mật khẩu được hash SHA-1 ngay tại browser trước khi gửi lên server. Server <strong>không bao giờ nhận mật khẩu gốc</strong>.
             </div>
         </div>
         <div class="footer">Khoa CNTT · ĐH Khoa học Tự nhiên TP.HCM</div>
@@ -198,9 +227,9 @@ async function doLogin() {
 
     try {
         // BƯỚC 1: Hash mật khẩu tại CLIENT
-        log('Đang hash mật khẩu bằng SHA-256 tại client...');
+        log('Đang hash mật khẩu bằng SHA-1 tại client...');
         const mkHash = await ClientCrypto.hashPassword(matkhau);
-        log(`SHA-256 hash: ${mkHash.substring(0,16)}...`, 'ok');
+        log(`SHA-1 hash: ${mkHash.substring(0,16)}...`, 'ok');
 
         // BƯỚC 2: Gửi hash lên server (KHÔNG gửi password gốc)
         log('Gửi hash lên server để xác thực...');
@@ -218,20 +247,61 @@ async function doLogin() {
 
         log('Xác thực thành công!', 'ok');
 
-        // BƯỚC 3: Kiểm tra xem NV đã có key chưa (từ sessionStorage)
+        // BƯỚC 3: Kiểm tra xem NV đã có key chưa (từ localStorage)
         const savedPrivKey = ClientCrypto.loadPrivateKey();
-        if (!savedPrivKey) {
-            // Lần đầu đăng nhập → tạo cặp khóa RSA mới
-            log('Tạo cặp khóa RSA-OAEP 2048-bit tại client...');
-            const keyPair = await ClientCrypto.generateKeyPair();
-            const privKeyB64 = await ClientCrypto.exportPrivateKey(keyPair.privateKey);
-            ClientCrypto.savePrivateKey(privKeyB64);
-            log('Private Key lưu vào sessionStorage (không gửi lên server)', 'ok');
-            log('Chuyển hướng đến dashboard...', 'ok');
-        } else {
-            log('Đã có Private Key trong session.', 'ok');
+        let savedPubKey = ClientCrypto.loadPublicKey();
+        let pubKeyToSync = null;
+
+        if (savedPrivKey) {
+            log('Đã có Private Key cục bộ.', 'ok');
+            if (savedPubKey) {
+                log('Đã có Public Key cục bộ.', 'ok');
+            } else {
+                log('Có Private Key nhưng chưa có Public Key cục bộ. Thử lấy từ server...');
+                const pubRes = await fetch(`/api/pubkey/${manv}`);
+                const pubData = await pubRes.json();
+                if (pubData.success && pubData.pubkey) {
+                    savedPubKey = pubData.pubkey;
+                    ClientCrypto.savePublicKey(savedPubKey);
+                    log('Public Key đã lấy từ server và lưu local.', 'ok');
+                } else {
+                    log('Không tìm thấy Public Key trên server; sẽ tạo cặp khóa mới.', 'info');
+                }
+            }
         }
 
+        if (!savedPrivKey) {
+            log('Không có Private Key cục bộ. Tạo cặp khóa RSA-OAEP 2048-bit mới...');
+            const keyPair = await ClientCrypto.generateKeyPair();
+            const pubKeyB64  = await ClientCrypto.exportPublicKey(keyPair.publicKey);
+            const privKeyB64 = await ClientCrypto.exportPrivateKey(keyPair.privateKey);
+            ClientCrypto.savePrivateKey(privKeyB64);
+            ClientCrypto.savePublicKey(pubKeyB64);
+            pubKeyToSync = pubKeyB64;
+            log('Private Key và Public Key mới đã được lưu vào localStorage.', 'ok');
+        } else {
+            log('Đã giữ lại Private Key cục bộ hiện có.', 'ok');
+            if (!savedPubKey) {
+                log('Public Key cục bộ vẫn thiếu. Chỉ sử dụng Private Key hiện có để giữ nguyên khả năng giải mã lương cũ.', 'info');
+            }
+        }
+
+        if (pubKeyToSync) {
+            log('Cập nhật Public Key lên server...');
+            const updateRes = await fetch('/api/update_pubkey', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pubkey: pubKeyToSync })
+            });
+            const updateData = await updateRes.json();
+            if (!updateData.success) {
+                showError(updateData.error || 'Không cập nhật được Public Key lên server.');
+                return;
+            }
+            log('Public Key đã được đồng bộ lên server.', 'ok');
+        }
+
+        log('Chuyển hướng đến dashboard...', 'ok');
         window.location.href = '/dashboard';
 
     } catch (e) {

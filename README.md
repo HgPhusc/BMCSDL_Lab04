@@ -11,7 +11,7 @@
 | **Hàm mã hóa** | `EncryptByAsymKey()` | `Web Crypto API` |
 | **Server thấy gì** | Plaintext rồi mã hóa | Chỉ nhận ciphertext |
 | **Stored Procedure** | Thực hiện mã hóa | Chỉ lưu/trả dữ liệu |
-| **Hash password** | `HASHBYTES('SHA1')` | `SHA-256` tại browser |
+| **Hash password** | `HASHBYTES('SHA1')` | `SHA-1` tại browser |
 
 ---
 
@@ -25,7 +25,7 @@ lab04/
     ├── app.py
     └── templates/lab04/
         ├── base.html        ← Chứa ClientCrypto (Web Crypto API)
-        ├── login.html       ← SHA-256 hash password tại browser
+        ├── login.html       ← SHA-1 hash password tại browser
         ├── dashboard.html   ← Hiển thị trạng thái Private Key
         ├── lop.html
         ├── sinhvien.html
@@ -52,7 +52,7 @@ Truy cập: **http://localhost:5001**
 
 ### Đăng nhập
 ```
-Browser: SHA-256(password) → gửi hash lên server
+Browser: SHA-1(password) → gửi hash lên server
 Server: so sánh hash (KHÔNG biết password gốc)
 ```
 
@@ -61,7 +61,7 @@ Server: so sánh hash (KHÔNG biết password gốc)
 Browser:
   1. generateKeyPair() → RSA-OAEP 2048-bit
   2. encrypt(publicKey, luong) → ciphertext Base64
-  3. SHA-256(password) → hash
+  3. SHA-1(password) → hash
   4. Gửi lên: {luong_enc, mk_hash, pubkey}
 Server: INSERT thẳng, KHÔNG mã hóa thêm
 ```
@@ -69,7 +69,7 @@ Server: INSERT thẳng, KHÔNG mã hóa thêm
 ### Nhập điểm
 ```
 Browser:
-  1. importPublicKey(pubkey từ session)
+  1. importPublicKey(pubkey từ server)
   2. encrypt(publicKey, diem) → ciphertext Base64
   3. Gửi: {masv, mahp, diem_enc}
 Server: INSERT ciphertext vào BANGDIEM.DIEMTHI
@@ -79,7 +79,7 @@ Server: INSERT ciphertext vào BANGDIEM.DIEMTHI
 ```
 Server: trả về ciphertext Base64
 Browser:
-  1. loadPrivateKey() từ sessionStorage
+  1. loadPrivateKey() từ localStorage
   2. importPrivateKey(privKeyB64)
   3. decrypt(privateKey, ciphertext) → plaintext
   4. Hiển thị

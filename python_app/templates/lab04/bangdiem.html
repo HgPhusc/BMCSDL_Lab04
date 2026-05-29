@@ -106,7 +106,16 @@
 
 <script>
 // Public key của NV hiện tại (từ session - lưu trong hidden field)
-const PUBKEY_B64 = {{ session.pubkey_client | tojson }};
+// Lấy public key từ server thay vì từ session
+async function getPublicKey() {
+    const manv = '{{ session.manv }}';
+    const res  = await fetch(`/api/pubkey/${manv}`);
+    const data = await res.json();
+    if (data.success && data.pubkey) {
+        return data.pubkey;
+    }
+    return null;
+}
 
 function encLog(msg, ok=false) {
     const box = document.getElementById('encryptLog');
@@ -123,9 +132,9 @@ function decLog(msg, ok=false) {
 }
 
 async function nhapDiem() {
-    const masv  = document.getElementById('inp-masv').value;
-    const mahp  = document.getElementById('inp-mahp').value;
-    const diem  = document.getElementById('inp-diem').value;
+    const masv = document.getElementById('inp-masv').value;
+    const mahp = document.getElementById('inp-mahp').value;
+    const diem = document.getElementById('inp-diem').value;
 
     document.getElementById('encryptLog').innerHTML = '';
 
@@ -134,24 +143,30 @@ async function nhapDiem() {
         return;
     }
 
-    if (!PUBKEY_B64) {
-        alert('Không có Public Key! Vui lòng đăng nhập lại.');
-        return;
-    }
-
     try {
-        // BƯỚC 1: Import Public Key từ session
-        encLog('Import Public Key RSA-OAEP từ session...');
-        const pubKey = await ClientCrypto.importPublicKey(PUBKEY_B64);
+        // BƯỚC 1: Lấy Public Key từ server (không dùng session)
+        encLog('Lấy Public Key từ server...');
+        const pubKeyB64 = await getPublicKey();
+
+        if (!pubKeyB64) {
+            encLog('❌ Không có Public Key! Cần cập nhật Public Key cho tài khoản.');
+            alert('Tài khoản chưa có Public Key!\n\nVào trang Thông tin cá nhân để tạo và cập nhật Public Key.');
+            return;
+        }
+        encLog('Nhận Public Key thành công.', true);
+
+        // BƯỚC 2: Import Public Key
+        encLog('Import Public Key RSA-OAEP...');
+        const pubKey = await ClientCrypto.importPublicKey(pubKeyB64);
         encLog('Public Key sẵn sàng.', true);
 
-        // BƯỚC 2: Mã hóa điểm tại CLIENT
+        // BƯỚC 3: Mã hóa điểm tại CLIENT
         encLog(`Mã hóa điểm "${diem}" bằng RSA-OAEP tại browser...`);
         const diemEnc = await ClientCrypto.encrypt(pubKey, diem.toString());
-        encLog(`Ciphertext (Base64): ${diemEnc.substring(0,30)}...`, true);
+        encLog(`Ciphertext: ${diemEnc.substring(0,30)}...`, true);
 
-        // BƯỚC 3: Gửi ciphertext lên server
-        encLog('Gửi ciphertext lên server (plaintext KHÔNG được gửi)...');
+        // BƯỚC 4: Gửi ciphertext lên server
+        encLog('Gửi ciphertext lên server...');
         const res = await fetch('/bangdiem/nhap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -160,12 +175,12 @@ async function nhapDiem() {
         const data = await res.json();
 
         if (data.success) {
-            encLog('✔ Lưu thành công! Điểm đã được mã hóa trong DB.', true);
+            encLog('✔ Lưu thành công!', true);
             setTimeout(() => xemDiem(), 500);
         } else {
             encLog('❌ Lỗi: ' + data.error);
         }
-    } catch (e) {
+    } catch(e) {
         encLog('❌ Lỗi: ' + e.message);
     }
 }
@@ -175,23 +190,20 @@ async function xemDiem() {
     if (!masv) return;
 
     document.getElementById('decryptLog').innerHTML = '';
-    document.getElementById('diemTable').innerHTML = '<div style="color:#94a3b8;font-size:.8rem;padding:10px">Đang tải...</div>';
+    document.getElementById('diemTable').innerHTML =
+        '<div style="color:#94a3b8;font-size:.8rem;padding:10px">Đang tải...</div>';
 
     const privKeyB64 = ClientCrypto.loadPrivateKey();
     if (!privKeyB64) {
-        decLog('❌ Không có Private Key trong session! Đăng nhập lại.');
+        decLog('❌ Không có Private Key! Vào trang Thông tin cá nhân để tạo lại.');
+        document.getElementById('diemTable').innerHTML =
+            '<div style="color:#f59e0b;padding:10px;font-size:.82rem">⚠ Chưa có Private Key trong localStorage. Vui lòng tạo lại tại trang Thông tin cá nhân.</div>';
         return;
     }
 
     try {
-        // BƯỚC 1: Lấy dữ liệu mã hóa từ server
-        decLog('Truy vấn dữ liệu điểm (ciphertext) từ server...');
-        const res = await fetch(`/bangdiem?masv=${masv}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-
-        // Gọi API riêng để lấy dữ liệu JSON
-        const apiRes = await fetch(`/api/bangdiem/${masv}`);
+        decLog('Truy vấn điểm (ciphertext) từ server...');
+        const apiRes  = await fetch(`/api/bangdiem/${masv}`);
         const apiData = await apiRes.json();
 
         if (!apiData.success) {
@@ -199,27 +211,33 @@ async function xemDiem() {
             return;
         }
 
-        decLog(`Nhận ${apiData.data.length} bản ghi điểm (dạng ciphertext).`, true);
+        if (apiData.data.length === 0) {
+            document.getElementById('diemTable').innerHTML =
+                '<div style="color:#94a3b8;text-align:center;padding:20px;font-size:.82rem">Sinh viên chưa có điểm.</div>';
+            return;
+        }
 
-        // BƯỚC 2: Import Private Key tại CLIENT
-        decLog('Import Private Key RSA-OAEP từ sessionStorage...');
+        decLog(`Nhận ${apiData.data.length} bản ghi (ciphertext).`, true);
+
+        decLog('Import Private Key từ localStorage...');
+
+        console.log("Private Key hiện tại đang nạp:", privKeyB64);
         const privKey = await ClientCrypto.importPrivateKey(privKeyB64);
-        decLog('Private Key sẵn sàng.', true);
+        decLog('Giải mã tại browser...', true);
 
-        // BƯỚC 3: Giải mã từng điểm tại CLIENT
-        decLog('Giải mã điểm thi tại browser...');
-        let html = `<table><thead><tr><th>MÃ HP</th><th>TÊN HP</th><th>ĐIỂM</th><th>TRẠNG THÁI</th></tr></thead><tbody>`;
+        let html = `<table>
+            <thead><tr><th>MÃ HP</th><th>TÊN HP</th><th>ĐIỂM</th><th>TRẠNG THÁI</th></tr></thead>
+            <tbody>`;
 
         for (const row of apiData.data) {
             let diemPlain = null;
-            let status = '';
-
             if (row.DIEMTHI_ENCRYPTED) {
+                // Dùng trực tiếp Base64 string ↓
                 diemPlain = await ClientCrypto.decrypt(privKey, row.DIEMTHI_ENCRYPTED);
             }
 
             if (diemPlain !== null) {
-                const d = parseFloat(diemPlain);
+                const d     = parseFloat(diemPlain);
                 const color = d >= 8 ? '#059669' : d >= 5 ? '#d97706' : '#dc2626';
                 html += `<tr>
                     <td><span class="tag tag-cyan">${row.MAHP}</span></td>
@@ -227,7 +245,7 @@ async function xemDiem() {
                     <td><strong style="color:${color};font-size:1rem">${diemPlain}</strong></td>
                     <td><span class="tag tag-green">✔ Giải mã OK</span></td>
                 </tr>`;
-                decLog(`${row.MAHP}: giải mã → ${diemPlain}`, true);
+                decLog(`${row.MAHP}: → ${diemPlain}`, true);
             } else {
                 html += `<tr>
                     <td><span class="tag tag-cyan">${row.MAHP}</span></td>
@@ -235,7 +253,7 @@ async function xemDiem() {
                     <td style="color:#94a3b8">—</td>
                     <td><span class="tag" style="background:#fef2f2;color:#991b1b">❌ Sai key</span></td>
                 </tr>`;
-                decLog(`${row.MAHP}: giải mã thất bại (sai Private Key)`);
+                decLog(`${row.MAHP}: giải mã thất bại`);
             }
         }
 
@@ -247,7 +265,6 @@ async function xemDiem() {
     }
 }
 
-// Tự động xem điểm nếu có masv_selected
 window.addEventListener('load', () => {
     const masv = document.getElementById('sel-masv').value;
     if (masv) xemDiem();

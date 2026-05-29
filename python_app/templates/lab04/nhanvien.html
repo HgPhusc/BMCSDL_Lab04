@@ -130,15 +130,24 @@ function addLog(msg, ok=false) {
         decLog(`Ciphertext: ${luongEnc.substring(0,30)}...`);
 
         const privKeyB64 = ClientCrypto.loadPrivateKey();
+        const keyVersion = localStorage.getItem('lab04_keyVersion');
+        const pubKeyB64 = localStorage.getItem('lab04_publicKey');
+        console.log('localStorage keyVersion:', keyVersion);
+        console.log('localStorage publicKey length:', pubKeyB64 ? pubKeyB64.length : 'missing');
+
         if (!privKeyB64) {
-            decLog('❌ Không có Private Key trong sessionStorage!');
+            decLog('❌ Không có Private Key trong localStorage!');
             document.getElementById('luongDisplay').innerHTML = `
-                <p style="color:#f59e0b">⚠ Private Key không có trong session.<br>Đăng xuất và đăng nhập lại.</p>`;
+                <p style="color:#f59e0b">⚠ Private Key không có trong bộ nhớ.<br>Đăng xuất và đăng nhập lại.</p>`;
             return;
         }
 
-        decLog('Import Private Key từ sessionStorage...');
+        decLog('Import Private Key từ localStorage...');
+        console.log('PrivateKeyBase64 snippet:', privKeyB64.substring(0, 40));
         const privKey = await ClientCrypto.importPrivateKey(privKeyB64);
+        decLog('Private Key import OK.', true);
+        console.log('Imported private key object:', privKey);
+        console.log('Salary ciphertext length:', luongEnc.length, 'base64');
         decLog('Giải mã RSA-OAEP tại browser...');
         const luongPlain = await ClientCrypto.decrypt(privKey, luongEnc);
 
@@ -198,9 +207,9 @@ async function themNhanVien() {
         addLog(`Ciphertext: ${luongEnc.substring(0,30)}...`, true);
 
         // BƯỚC 3: Hash mật khẩu tại CLIENT
-        addLog('Hash mật khẩu bằng SHA-256 tại browser...');
-        const mkHash = await ClientCrypto.hashPassword(mk);
-        addLog(`SHA-256: ${mkHash.substring(0,20)}...`, true);
+        addLog('Hash mật khẩu bằng SHA-1 tại browser...'); // Đổi log thành SHA-1
+        const mkHash = await ClientCrypto.hashPassword(mk); // Hàm này tự gọi sang SHA-1 đã sửa ở base/login
+        addLog(`SHA-1: ${mkHash.substring(0,20)}...`, true);
 
         // BƯỚC 4: Gửi lên server (ciphertext + hash, KHÔNG có plaintext)
         addLog('Gửi dữ liệu đã mã hóa lên server...');
