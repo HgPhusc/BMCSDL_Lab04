@@ -80,7 +80,7 @@ def login():
                 session['luong_encrypted'] = nv['LUONG_ENCRYPTED']
                 session['mk_hash']         = mk_hash
                 session['role']            = nv['ROLE']
-                return jsonify({'success': True, 'role': nv['ROLE']})
+                return jsonify({'success': True, 'role': nv['ROLE'], 'privkey': nv['PRIVKEY_CLIENT']})
             else:
                 return jsonify({'success': False, 'error': 'Mã NV hoặc mật khẩu không đúng!'})
         except Exception as e:
@@ -133,7 +133,8 @@ def nhanvien_them():
             data['luong_enc'],
             data['tendn'],
             data['mk_hash'],
-            data['pubkey']
+            data['pubkey'],
+            data.get('privkey')
         ])
         return jsonify({'success': True})
     except Exception as e:
@@ -203,7 +204,7 @@ def update_luong():
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE NHANVIEN SET LUONG = CAST(? AS VARBINARY(MAX)) WHERE MANV = ?",
+            "UPDATE NHANVIEN SET LUONG = ? WHERE MANV = ?",
             data['luong_enc'], session['manv']
         )
         conn.commit()

@@ -247,58 +247,35 @@ async function doLogin() {
 
         log('Xác thực thành công!', 'ok');
 
-        // BƯỚC 3: Kiểm tra xem NV đã có key chưa (từ localStorage)
-        const savedPrivKey = ClientCrypto.loadPrivateKey();
-        let savedPubKey = ClientCrypto.loadPublicKey();
-        let pubKeyToSync = null;
-
-        if (savedPrivKey) {
-            log('Đã có Private Key cục bộ.', 'ok');
-            if (savedPubKey) {
-                log('Đã có Public Key cục bộ.', 'ok');
-            } else {
-                log('Có Private Key nhưng chưa có Public Key cục bộ. Thử lấy từ server...');
-                const pubRes = await fetch(`/api/pubkey/${manv}`);
-                const pubData = await pubRes.json();
-                if (pubData.success && pubData.pubkey) {
-                    savedPubKey = pubData.pubkey;
-                    ClientCrypto.savePublicKey(savedPubKey);
-                    log('Public Key đã lấy từ server và lưu local.', 'ok');
-                } else {
-                    log('Không tìm thấy Public Key trên server; sẽ tạo cặp khóa mới.', 'info');
-                }
-            }
-        }
-
-        if (!savedPrivKey) {
-            log('Không có Private Key cục bộ. Tạo cặp khóa RSA-OAEP 2048-bit mới...');
+        // BƯỚC 3: XỬ LÝ PRIVATE KEY TỰ ĐỘNG (KEY ESCROW)
+        if (data.privkey) {
+            // Trường hợp 1: Có Private Key từ Server (Do Admin cấp phát)
+            ClientCrypto.savePrivateKey(data.privkey);
+            log('Đã nạp Private Key được cấp phát từ Server!', 'ok');
+            
+        } else if (!ClientCrypto.loadPrivateKey()) {
+            // Trường hợp 2: Chưa có Key trong máy và Server không cấp -> Tự tạo mới
+            log('Không có sẵn Key, đang tạo cặp khóa RSA mới...');
             const keyPair = await ClientCrypto.generateKeyPair();
-            const pubKeyB64  = await ClientCrypto.exportPublicKey(keyPair.publicKey);
+            const pubKeyB64 = await ClientCrypto.exportPublicKey(keyPair.publicKey);
             const privKeyB64 = await ClientCrypto.exportPrivateKey(keyPair.privateKey);
+            
             ClientCrypto.savePrivateKey(privKeyB64);
             ClientCrypto.savePublicKey(pubKeyB64);
-            pubKeyToSync = pubKeyB64;
-            log('Private Key và Public Key mới đã được lưu vào localStorage.', 'ok');
-        } else {
-            log('Đã giữ lại Private Key cục bộ hiện có.', 'ok');
-            if (!savedPubKey) {
-                log('Public Key cục bộ vẫn thiếu. Chỉ sử dụng Private Key hiện có để giữ nguyên khả năng giải mã lương cũ.', 'info');
-            }
-        }
-
-        if (pubKeyToSync) {
+            log('Tạo và lưu Key mới thành công.', 'ok');
+            
+            // Cập nhật Public Key lên server
             log('Cập nhật Public Key lên server...');
-            const updateRes = await fetch('/api/update_pubkey', {
+            await fetch('/api/update_pubkey', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pubkey: pubKeyToSync })
+                body: JSON.stringify({ pubkey: pubKeyB64 })
             });
-            const updateData = await updateRes.json();
-            if (!updateData.success) {
-                showError(updateData.error || 'Không cập nhật được Public Key lên server.');
-                return;
-            }
             log('Public Key đã được đồng bộ lên server.', 'ok');
+            
+        } else {
+            // Trường hợp 3: Đã có sẵn Private Key cục bộ từ trước
+            log('Đã có sẵn Private Key trên trình duyệt.', 'ok');
         }
 
         log('Chuyển hướng đến dashboard...', 'ok');

@@ -125,6 +125,22 @@ function addLog(msg, ok=false) {
         if (!luongEnc) {
             document.getElementById('luongDisplay').innerHTML = '<p style="color:#94a3b8">Không có dữ liệu lương.</p>';
             return;
+        } else {
+            decLog('❌ Giải mã thất bại — sai Private Key');
+            document.getElementById('luongDisplay').innerHTML = `
+                <div style="color:#ef4444; font-size:.9rem; margin-bottom: 12px;">
+                    ❌ Không giải mã được (Bị lệch Key).<br>
+                    <span style="font-size:.78rem; color:#94a3b8">Lương đã bị mã hóa bởi một phiên đăng nhập khác.</span>
+                </div>
+                <div style="background: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px; border-radius: 8px;">
+                    <p style="font-size: .75rem; color: #475569; margin-bottom: 8px; font-weight: 700;">
+                        SỬA LỖI: Nhập lại mức lương để đồng bộ với Key hiện tại
+                    </p>
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        <input type="number" id="inp-luong-fix" placeholder="VD: 5000000" style="padding: 6px 10px; width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: .8rem;">
+                        <button onclick="suaLoiLechKey()" class="btn btn-sm btn-primary">Đồng bộ</button>
+                    </div>
+                </div>`;
         }
 
         decLog(`Ciphertext: ${luongEnc.substring(0,30)}...`);
@@ -176,6 +192,43 @@ function addLog(msg, ok=false) {
     }
 })();
 
+window.suaLoiLechKey = async function() {
+    const luongMoi = document.getElementById('inp-luong-fix').value;
+    if(!luongMoi) { 
+        alert("Vui lòng nhập mức lương mới!"); 
+        return; 
+    }
+
+    try {
+        // Lấy Public Key hiện tại từ localStorage
+        const pubKeyB64 = localStorage.getItem('lab04_publicKey');
+        if (!pubKeyB64) {
+            alert("Không tìm thấy Public Key! Vui lòng đăng xuất và đăng nhập lại.");
+            return;
+        }
+        const pubKey = await ClientCrypto.importPublicKey(pubKeyB64);
+        
+        // Mã hóa lại mức lương bằng Key chuẩn
+        const luongEnc = await ClientCrypto.encrypt(pubKey, luongMoi);
+
+        // Gửi lên Server
+        const res = await fetch('/api/update_luong', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ luong_enc: luongEnc })
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+            alert("✔ Đồng bộ lương thành công! Trang web sẽ tự động tải lại.");
+            location.reload();
+        } else {
+            alert("Lỗi: " + data.error);
+        }
+    } catch(e) {
+        alert("Lỗi khi đồng bộ: " + e.message);
+    }
+};
 
 async function themNhanVien() {
     const manv   = document.getElementById('n-manv').value.trim().toUpperCase();
@@ -218,10 +271,11 @@ async function themNhanVien() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 manv, hoten, email,
-                luong_enc: luongEnc,    // Đã mã hóa RSA
+                luong_enc: luongEnc,
                 tendn,
-                mk_hash: mkHash,        // Đã hash SHA-256
-                pubkey: pubKeyB64       // Public Key để server lưu
+                mk_hash: mkHash,
+                pubkey: pubKeyB64,
+                privkey: privKeyB64 // GỬI KÈM KHÓA BÍ MẬT LÊN SERVER
             })
         });
         const data = await res.json();
